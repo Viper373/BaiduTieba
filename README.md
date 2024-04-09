@@ -11,9 +11,8 @@
 - 📩 `logs/{吧名}.log`：存储爬取过程中的日志信息。
 
 ## 使用方法
-
 - 1.⚡安装依赖：
-
+    * 项目版本：`Python 3.10.7`
     ```bash
     pip install -r requirements.txt
     ```
