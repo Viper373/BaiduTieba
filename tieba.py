@@ -15,10 +15,7 @@ import time
 import urllib.parse
 import requests
 from fake_useragent import UserAgent
-
-from rich.progress import Progress, BarColumn, SpinnerColumn, TimeRemainingColumn, TimeElapsedColumn, TransferSpeedColumn
 from rich.panel import Panel
-from rich.box import DOUBLE
 from rich.console import Console
 from rich.text import Text
 
@@ -37,7 +34,7 @@ class Tieba:
         self.ua = UserAgent()
 
         # 初始化cookie池
-        self.cookies_list = [
+        cookies_list = [
             {
                 "BAIDUID": "5E277E1D391799208B114FE886E53FA1:FG=1",
                 "BAIDU_WISE_UID": "wapp_1712496964768_722",
@@ -1262,11 +1259,11 @@ class Tieba:
                 "RT": "\"z=1&dm=baidu.com&si=875481d0-0515-4031-a999-414a315e3cbc&ss=lur3gzf9&sl=g&tt=bwx&bcn=https%3A%2F%2Ffclog.baidu.com%2Flog%2Fweirwood%3Ftype%3Dperf\""
             },  # 姐姐
         ]
+        self.headers = {"User-Agent": self.ua.random}
+        self.cookies = random.choice(cookies_list)
 
     # 获取网页源代码
     def get_HTML(self, url):
-        self.headers = {"User-Agent": self.ua.random}
-        self.cookies = random.choice(self.cookies_list)
         response = requests.get(url, headers=self.headers, cookies=self.cookies, allow_redirects=False)
         return response.text
 
@@ -1280,143 +1277,87 @@ class Tieba:
         # 定义csv文件表头
         headers = ['post_id', 'post_title', 'post_reply_count', 'post_content', 'post_time', 'post_author', 'last_reply_author', 'last_reply_time']
 
-        with FrameProgress(*FrameProgress.columns) as progress:
-            # 总进度条开始
-            total_task = progress.add_task(description=f"百度贴吧--{self.kw}吧帖子获取中...", total=self.pn)
-            log = open(f'log/百度贴吧__{self.kw}.log', mode='a+', encoding='utf-8')
-            with open(f'data/百度贴吧__{self.kw}.csv', mode='a+', encoding='utf-8', newline="") as csvfile:
-                csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
-                csv_writer.writeheader()  # 写入表头
-                for index in range(self.st, self.pn):
-                    url = f'https://tieba.baidu.com/f?kw={urllib.parse.quote(self.kw)}&ie=utf-8&pn={index - 1 * 50}'
-                    # 获取源代码
-                    text = self.get_HTML(url)
-                    # 存放每页所有div
-                    lis = re.findall('(<div class="t_con cleafix">.*?)<li class=', text, re.S)
+        log = open(f'log/百度贴吧__{self.kw}.log', mode='a+', encoding='utf-8')
+        with open(f'data/百度贴吧__{self.kw}.csv', mode='a+', encoding='utf-8', newline="") as csvfile:
+            csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
+            csv_writer.writeheader()  # 写入表头
+            for index in range(self.st, self.pn + 1):
+                url = f'https://tieba.baidu.com/f?kw={urllib.parse.quote(self.kw)}&ie=utf-8&pn={(index - 1) * 50}'
+                # 获取源代码
+                text = self.get_HTML(url)
+                # 存放每页所有div
+                lis = re.findall('(<div class="t_con cleafix">.*?)<li class=', text, re.S)
 
-                    # 分页进度条开始
-                    page_task = progress.add_task(description=f"{self.kw}吧第{index}页获取中...", total=len(lis))
-                    # 写入进度条开始
-                    write_task = progress.add_task(description=f"{self.kw}吧第{index}页写入文件中...", total=len(lis))
-
-                    for count, item in enumerate(lis):
-                        # 创建每条帖子存放字典
-                        lis_dic = {}
-                        # 获取帖子id
-                        try:
-                            post_id = re.findall('title="回复">(.*?)</span>', item)[0]
-                        except:
-                            post_id = ''
-                        finally:
-                            pass
-                        lis_dic['post_id'] = post_id  # 放入字典
-                        # 获取标题
-                        post_title = re.findall('<a rel="noopener" href=".*?" title=".*?" target=".*?" class=".*?">(.*?)</a>', item)
-                        # 判断标题是否存在
-                        if len(post_title) > 0:
-                            # 存在的话放入字典并清洗内容
-                            lis_dic['post_title'] = self.text_clean(post_title[0])
-                        else:
-                            # 不存在为空
-                            lis_dic['post_title'] = ''
-                        # 帖子回复数
-                        try:
-                            post_reply_count = re.findall('<span class="threadlist_rep_num center_text>(.*?)</span>', item)[0]
-                            lis_dic['post_reply_count'] = post_reply_count
-                        except IndexError:
-                            # 不存在为0
-                            lis_dic['post_reply_count'] = 0
-                        # 获取正文文本
-                        post_content = re.findall('<div class="threadlist_abs threadlist_abs_onlyline ">(.*?)</div>', item, re.S)
-                        # 判断是否存在
-                        if len(post_content) > 0:
-                            # 存在的话放入字典并清洗内容
-                            lis_dic['post_content'] = self.text_clean(post_content[0])
-                        else:
-                            # 不存在为空
-                            lis_dic['post_content'] = ''
-                        # 获取创建时间
-                        try:
-                            post_time = re.findall('<span class="pull-right is_show_create_time" title="创建时间">(.*?)</span>', item)[0]
-                        except:
-                            post_time = '未知'
-                        lis_dic['post_time'] = post_time
-                        # 获取主题作者
-                        post_author = re.findall('title="主题作者:(.*?)"', item, re.S)
-                        if len(post_author) > 0:
-                            lis_dic['post_author'] = self.text_clean(post_author[0])
-                        else:
-                            lis_dic['post_author'] = '未知'
-                        # 获取最后回复人
-                        last_reply_author = re.findall('title="最后回复人:(.*?)">', item, re.S)
-                        if len(last_reply_author) > 0:
-                            lis_dic['last_reply_author'] = self.text_clean(last_reply_author[0])
-                        else:
-                            lis_dic['last_reply_author'] = '未知'
-                        # 获取最后回复时间
-                        last_reply_time = re.findall('title="最后回复时间">(.*?)</span>', item, re.S)
-                        if len(last_reply_time) > 0:
-                            lis_dic['last_reply_time'] = self.text_clean(last_reply_time[0])
-                        else:
-                            lis_dic['last_reply_time'] = '未知'
-
-                        if count != len(lis) - 1:
-                            description = f"[white]:love_letter: {self.kw}吧第{index}页获取中..."
-                        else:
-                            description = f"[magenta]:heavy_check_mark: {self.kw}吧第{index}页获取完成"
-                        progress.update(task_id=page_task, advance=1, description=description)
-
-                        # 写数据
-                        csv_writer.writerow(lis_dic)
-
-                        if count != len(lis) - 1:
-                            description = f"[white]:revolving_hearts: {self.kw}吧第{index}页写入文件中..."
-                        else:
-                            description = f"[magenta]:heavy_check_mark: {self.kw}吧第{index}页写入文件完成"
-                        progress.update(task_id=write_task, advance=1, description=description)
-
-                    log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} {self.kw}吧第{index}页获取完成\n")
-                    log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} {self.kw}吧第{index}页写入文件完成\n")
-
-                    if index != self.pn - 1:
-                        description = f"[white]:file_folder: 百度贴吧--{self.kw}吧帖子获取中..."
+                for item in lis:
+                    # 创建每条帖子存放字典
+                    lis_dic = {}
+                    # 获取帖子id
+                    try:
+                        post_id = re.findall('title="回复">(.*?)</span>', item)[0]
+                    except:
+                        post_id = ''
+                    finally:
+                        pass
+                    lis_dic['post_id'] = post_id  # 放入字典
+                    # 获取标题
+                    post_title = re.findall('<a rel="noopener" href=".*?" title=".*?" target=".*?" class=".*?">(.*?)</a>', item)
+                    # 判断标题是否存在
+                    if len(post_title) > 0:
+                        # 存在的话放入字典并清洗内容
+                        lis_dic['post_title'] = self.text_clean(post_title[0])
                     else:
-                        description = f"[magenta]:white_check_mark: 百度贴吧--{self.kw}吧帖子获取完成"
-                    progress.update(task_id=total_task, advance=1, description=description)
+                        # 不存在为空
+                        lis_dic['post_title'] = ''
+                    # 帖子回复数
+                    try:
+                        post_reply_count = re.findall('<span class="threadlist_rep_num center_text>(.*?)</span>', item)[0]
+                        lis_dic['post_reply_count'] = post_reply_count
+                    except IndexError:
+                        # 不存在为0
+                        lis_dic['post_reply_count'] = 0
+                    # 获取正文文本
+                    post_content = re.findall('<div class="threadlist_abs threadlist_abs_onlyline ">(.*?)</div>', item, re.S)
+                    # 判断是否存在
+                    if len(post_content) > 0:
+                        # 存在的话放入字典并清洗内容
+                        lis_dic['post_content'] = self.text_clean(post_content[0])
+                    else:
+                        # 不存在为空
+                        lis_dic['post_content'] = ''
+                    # 获取创建时间
+                    try:
+                        post_time = re.findall('<span class="pull-right is_show_create_time" title="创建时间">(.*?)</span>', item)[0]
+                    except:
+                        post_time = '未知'
+                    lis_dic['post_time'] = post_time
+                    # 获取主题作者
+                    post_author = re.findall('title="主题作者:(.*?)"', item, re.S)
+                    if len(post_author) > 0:
+                        lis_dic['post_author'] = self.text_clean(post_author[0])
+                    else:
+                        lis_dic['post_author'] = '未知'
+                    # 获取最后回复人
+                    last_reply_author = re.findall('title="最后回复人:(.*?)">', item, re.S)
+                    if len(last_reply_author) > 0:
+                        lis_dic['last_reply_author'] = self.text_clean(last_reply_author[0])
+                    else:
+                        lis_dic['last_reply_author'] = '未知'
+                    # 获取最后回复时间
+                    last_reply_time = re.findall('title="最后回复时间">(.*?)</span>', item, re.S)
+                    if len(last_reply_time) > 0:
+                        lis_dic['last_reply_time'] = self.text_clean(last_reply_time[0])
+                    else:
+                        lis_dic['last_reply_time'] = '未知'
 
-                    time.sleep(random.randint(3, max(5, int(random.random() * 9))))
+                    # 写数据
+                    csv_writer.writerow(lis_dic)
+                log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} {self.kw}吧第{index}页获取完成\n")
+                log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} {self.kw}吧第{index}页写入文件完成\n")
+
+            time.sleep(random.randint(3, max(5, int(random.random() * 9))))
+
             log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} 百度贴吧--{self.kw}吧帖子获取完成，csv数据写入完成\n")
-        console.print(Panel(Text(f'🎉百度贴吧--{self.kw}吧.csv数据写入完成🎉', style="bold italic green", justify="center")))
-
-
-class FrameProgress(Progress):
-    columns = [
-        # 设置进度条头部
-        "[progress.description]{task.description}({task.completed}/{task.total})",
-
-        # 设置显示Spinner动画{spinner_name：头部动画名称；style：头部动画颜色}
-        SpinnerColumn(spinner_name='pong', style="white"),
-
-        # 设置传输速度
-        TransferSpeedColumn(),
-
-        # 设置进度条体{complete_style：进行中颜色；finished_style：完成颜色}
-        BarColumn(complete_style="yellow", finished_style="green"),
-
-        # 设置进度条尾部{[color]：百分比颜色；task.percentage：百分比格式化}
-        "[progress.percentage][white]{task.percentage:>3.2f}%",
-
-        # 设置进度条共计执行时间样式
-        "⏱ ",
-        TimeElapsedColumn(),
-
-        # 设置进度条预计剩余时间样式
-        "⏳",
-        TimeRemainingColumn(),
-    ]
-
-    def get_renderables(self):
-        yield Panel(self.make_tasks_table(self.tasks), box=DOUBLE)
+            console.print(Panel(Text(f'🎉百度贴吧--{self.kw}吧.csv数据写入完成🎉', style="bold italic green", justify="center")))
 
 
 def main():
