@@ -24,7 +24,7 @@
 - 3.🚄运行脚本：
 
     ```bash
-    python tieba.py
+    python main.py
     ```
 
     脚本会开始爬取贴吧帖子信息，并将结果存储到 CSV 文件中。
